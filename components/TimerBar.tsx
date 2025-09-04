@@ -5,11 +5,17 @@ import { TimerMode } from '../types';
 import { PauseIcon, PlayIcon, StopCircleIcon } from './Icons';
 import { Button, Select } from './ui';
 
-const formatTime = (seconds: number | null | undefined) => {
-  if (seconds == null || isNaN(seconds) || seconds < 0) return "00:00"; // fallback
-
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
+const formatTime = (seconds: number | null | undefined): string => {
+  // More robust error handling
+  if (seconds == null || isNaN(seconds) || seconds < 0) {
+    return "00:00";
+  }
+  
+  // Ensure we're working with a valid integer
+  const validSeconds = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(validSeconds / 60);
+  const secs = validSeconds % 60;
+  
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
@@ -17,7 +23,11 @@ const TimerBar: React.FC = () => {
   const context = useContext(AppContext);
   const location = useLocation();
 
-  if (!context) return null;
+  // Early return with error boundary
+  if (!context) {
+    console.warn('TimerBar: AppContext is null');
+    return null;
+  }
 
   const {
     subjects,
@@ -36,7 +46,8 @@ const TimerBar: React.FC = () => {
     return null;
   }
 
-  if (subjects.length === 0) {
+  // Safe check for subjects
+  if (!subjects || subjects.length === 0) {
     return (
       <div className="fixed bottom-20 md:bottom-4 left-1/2 -translate-x-1/2 w-[95%] max-w-lg z-50 bg-card border p-4 rounded-lg flex items-center justify-center shadow-lg">
         <p className="text-muted-foreground text-sm">
@@ -46,14 +57,60 @@ const TimerBar: React.FC = () => {
     );
   }
 
+  // Safe timer mode handling
+  const handleTimerModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    try {
+      const newMode = e.target.value as TimerMode;
+      if (Object.values(TimerMode).includes(newMode)) {
+        setTimerMode(newMode);
+      }
+    } catch (error) {
+      console.error('Error changing timer mode:', error);
+    }
+  };
+
+  // Safe subject selection
+  const handleSubjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    try {
+      const subjectId = e.target.value;
+      if (subjectId && subjects.some(s => s.id === subjectId)) {
+        setActiveSubjectId(subjectId);
+      }
+    } catch (error) {
+      console.error('Error changing subject:', error);
+    }
+  };
+
+  // Safe timer actions with error handling
+  const handleStartTimer = () => {
+    try {
+      if (!activeSubjectId) {
+        // Show user feedback instead of crashing
+        alert('Please select a subject first');
+        return;
+      }
+      startTimer();
+    } catch (error) {
+      console.error('Error starting timer:', error);
+    }
+  };
+
+  const handleStopTimer = () => {
+    try {
+      stopAndSaveSession();
+    } catch (error) {
+      console.error('Error stopping timer:', error);
+    }
+  };
+
   return (
     <div className="fixed bottom-20 md:bottom-4 left-1/2 -translate-x-1/2 w-[95%] max-w-xl z-50 bg-card p-2 rounded-lg border shadow-lg">
       <div className="flex items-center justify-between px-2">
         {/* Left controls */}
         <div className="flex items-center gap-2 w-1/3">
           <Select
-            value={timerMode}
-            onChange={(e) => setTimerMode(e.target.value as TimerMode)}
+            value={timerMode || TimerMode.Pomodoro}
+            onChange={handleTimerModeChange}
             disabled={isTimerRunning}
             className="w-full sm:w-32"
           >
@@ -63,7 +120,7 @@ const TimerBar: React.FC = () => {
 
           <Select
             value={activeSubjectId || ''}
-            onChange={(e) => setActiveSubjectId(e.target.value)}
+            onChange={handleSubjectChange}
             disabled={isTimerRunning}
             className="w-36 hidden md:block"
           >
@@ -78,7 +135,7 @@ const TimerBar: React.FC = () => {
           </Select>
         </div>
 
-        {/* Timer display */}
+        {/* Timer display with error boundary */}
         <div className="flex items-center space-x-2 w-1/3 justify-center">
           <span className="text-3xl font-mono font-semibold text-primary">
             {formatTime(currentTime)}
@@ -88,10 +145,11 @@ const TimerBar: React.FC = () => {
         {/* Action buttons */}
         <div className="flex items-center space-x-2 w-1/3 justify-end">
           <Button
-            onClick={startTimer}
+            onClick={handleStartTimer}
             size="icon"
             variant="accent"
             className="rounded-full"
+            disabled={!activeSubjectId}
           >
             {isTimerRunning ? (
               <PauseIcon className="w-5 h-5" />
@@ -100,7 +158,7 @@ const TimerBar: React.FC = () => {
             )}
           </Button>
           <Button
-            onClick={stopAndSaveSession}
+            onClick={handleStopTimer}
             disabled={!isTimerRunning}
             size="icon"
             variant="secondary"
